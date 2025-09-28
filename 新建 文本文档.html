@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校园地图互动系统 - 数据收集</title>
+    <!-- 引入外部资源 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入Chart.js用于图表展示 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        accent: '#F59E0B',
+                        dark: '#1F2937',
+                        light: '#F3F4F6'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- 自定义工具类 -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .dorm-btn {
+                @apply absolute w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white cursor-pointer 
+                       shadow-lg hover:bg-primary/80 transition-all duration-300 hover:scale-110 z-10;
+            }
+            .popup-window {
+                @apply absolute bg-white rounded-lg shadow-xl p-4 w-48 z-20 transform transition-all duration-300
+                       opacity-0 pointer-events-none scale-95;
+            }
+            .popup-visible {
+                @apply opacity-100 pointer-events-auto scale-100;
+            }
+            .option-btn {
+                @apply w-full py-2 px-3 rounded-md text-left mb-2 hover:bg-light transition-colors duration-200
+                       flex items-center gap-2;
+            }
+            .section-card {
+                @apply bg-white rounded-xl shadow-md p-6 border border-gray-200 mb-6;
+            }
+        }
+    </style>
+    
+    <!-- 地图容器调整样式 -->
+    <style>
+        #mapContainer {
+            max-height: 70vh;
+            overflow: auto;
+        }
+        
+        @media (max-width: 768px) {
+            #mapContainer {
+                max-height: 50vh;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 页面标题 -->
+    <header class="bg-dark text-white py-6 px-4 shadow-md">
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold flex items-center">
+                <i class="fa fa-map-marker mr-3 text-accent"></i>
+                校园地图互动系统
+            </h1>
+        </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="container mx-auto py-8 px-4">
+        <!-- 标签页导航 -->
+        <div class="mb-6 border-b border-gray-200">
+            <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="tabNavigation">
+                <li class="mr-2">
+                    <button class="inline-block p-4 border-b-2 border-primary text-primary rounded-t-lg" id="mapTab">
+                        <i class="fa fa-map mr-1"></i>地图视图
+                    </button>
+                </li>
+                <li class="mr-2">
+                    <button class="inline-block p-4 border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300 rounded-t-lg" id="formTab">
+                        <i class="fa fa-form mr-1"></i>数据提交
+                    </button>
+                </li>
+                <li>
+                    <button class="inline-block p-4 border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300 rounded-t-lg" id="statsTab">
+                        <i class="fa fa-bar-chart mr-1"></i>统计分析
+                    </button>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- 地图视图 -->
+        <div id="mapView" class="tab-content">
+            <div class="relative bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
+                <!-- 地图控制按钮 -->
+                <div class="absolute top-4 right-4 z-30 flex flex-col gap-2">
+                    <button id="zoomIn" class="bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition-colors">
+                        <i class="fa fa-search-plus text-dark"></i>
+                    </button>
+                    <button id="zoomOut" class="bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition-colors">
+                        <i class="fa fa-search-minus text-dark"></i>
+                    </button>
+                    <button id="resetMap" class="bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition-colors">
+                        <i class="fa fa-refresh text-dark"></i>
+                    </button>
+                </div>
+                
+                <!-- 学校地图底图 -->
+                <div id="mapContainer" class="relative w-full transition-all duration-300">
+                    <img src="https://www.eol.cn/guangdong/gdgd/202208/W020220825367724834940.png" alt="广东东软学院地图" 
+                         class="w-full h-auto max-h-full object-scale-down" id="mapImage">
+                </div>
+            </div>
+        </div>
+        
+        <!-- 数据提交表单 -->
+        <div id="formView" class="tab-content hidden">
+            <div class="section-card">
+                <h2 class="text-xl font-bold text-dark mb-4">宿舍信息反馈</h2>
+                <form id="dataForm" class="space-y-4">
+                    <div>
+                        <label for="buildingSelect" class="block text-sm font-medium text-gray-700 mb-1">宿舍楼</label>
+                        <select id="buildingSelect" name="building" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary">
+                            <option value="">请选择宿舍楼</option>
+                            <!-- 选项将通过JavaScript动态生成 -->
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="roomNumber" class="block text-sm font-medium text-gray-700 mb-1">房间号</label>
+                        <input type="text" id="roomNumber" name="roomNumber" placeholder="如：302" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary">
+                    </div>
+                    
+                    <div>
+                        <label for="feedbackType" class="block text-sm font-medium text-gray-700 mb-1">反馈类型</label>
+                        <select id="feedbackType" name="feedbackType" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary">
+                            <option value="maintenance">设施维修</option>
+                            <option value="suggestion">建议反馈</option>
+                            <option value="complaint">投诉举报</option>
+                            <option value="inquiry">咨询问题</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">详细描述</label>
+                        <textarea id="description" name="description" rows="4" placeholder="请详细描述您的情况..."
+                                  class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary"></textarea>
+                    </div>
+                    
+                    <div>
+                        <label for="contactInfo" class="block text-sm font-medium text-gray-700 mb-1">联系方式（选填）</label>
+                        <input type="text" id="contactInfo" name="contactInfo" placeholder="电话或微信"
+                               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary">
+                    </div>
+                    
+                    <div class="flex justify-end">
+                        <button type="submit" class="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-md transition-colors flex items-center">
+                            <i class="fa fa-paper-plane mr-2"></i>提交反馈
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 统计分析 -->
+        <div id="statsView" class="tab-content hidden">
+            <div class="section-card">
+                <h2 class="text-xl font-bold text-dark mb-4">数据统计分析</h2>
+                <p class="text-gray-600 mb-6">共收集到 <span id="totalRecords" class="font-semibold text-primary">0</span> 条反馈数据</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- 反馈类型统计图表 -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">反馈类型分布</h3>
+                        <div class="h-64">
+                            <canvas id="feedbackTypeChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- 宿舍楼反馈统计图表 -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">各宿舍楼反馈数量</h3>
+                        <div class="h-64">
+                            <canvas id="buildingChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 数据列表 -->
+                <div class="mt-8">
+                    <h3 class="text-lg font-semibold mb-3">反馈记录</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">宿舍楼</th>
+                                    <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">房间号</th>
+                                    <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">类型</th>
+                                    <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">提交时间</th>
+                                    <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recordsTable" class="bg-white divide-y divide-gray-200">
+                                <!-- 数据将通过JavaScript动态生成 -->
+                                <tr>
+                                    <td colspan="5" class="px-4 py-8 text-center text-gray-500">暂无数据</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 成功提示弹窗 -->
+    <div id="successModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <div class="text-center">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                    <i class="fa fa-check text-2xl text-green-500"></i>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">提交成功</h3>
+                <p class="text-gray-600 mb-4">您的反馈已成功提交，我们会尽快处理</p>
+                <button id="closeModal" class="inline-flex justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90">
+                    确定
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 宿舍楼数据
+        const dormitories = [
+            { id: 1, name: "博学楼", x: 22, y: 38 },
+            { id: 2, name: "北区体育场", x: 14, y: 38 },
+            { id: 3, name: "第三宿舍", x: 34, y: 38 },
+            { id: 4, name: "第四宿舍", x: 40, y: 38 },
+            { id: 5, name: "第五宿舍", x: 46, y: 38 },
+            { id: 6, name: "第六宿舍", x: 52, y: 38 },
+            { id: 7, name: "第七宿舍", x: 22, y: 45 },
+            { id: 8, name: "第八宿舍", x: 28, y: 45 }
+        ];
+        
+        // 选项数据
+        const options = {
+            1: [
+                { text: "查看宿舍信息", icon: "fa-info-circle" },
+                { text: "宿舍报修", icon: "fa-wrench" }
+            ],
+            2: [
+                { text: "查看场地信息", icon: "fa-info-circle" },
+                { text: "预约场地", icon: "fa-calendar" }
+            ],
+            3: [
+                { text: "查看宿舍信息", icon: "fa-info-circle" },
+                { text: "宿舍报修", icon: "fa-wrench" }
+            ],
+            4: [
+                { text: "查看宿舍信息", icon: "fa-info-circle" },
+                { text: "宿舍报修", icon: "fa-wrench" }
+            ],
+            5: [
+                { text: "查看宿舍信息", icon: "fa-info-circle" },
+                { text: "宿舍报修", icon: "fa-wrench" }
+            ],
+            6: [
+                { text: "查看宿舍信息", icon: "fa-info-circle" },
+                { text: "宿舍报修", icon: "fa-wrench" }
+            ],
+            7: [
+                { text: "查看宿舍信息", icon: "fa-info-circle" },
+                { text: "宿舍报修", icon: "fa-wrench" }
+            ],
+            8: [
+                { text: "查看宿舍信息", icon: "fa-info-circle" },
+                { text: "宿舍报修", icon: "fa-wrench" }
+            ]
+        };
+        
+        // 全局变量
+        let currentPopup = null;
+        let feedbackTypeChart = null;
+        let buildingChart = null;
+        
+        // 初始化
+        function init() {
+            initMap();
+            initForm();
+            initTabs();
+            loadData();
+            initCharts();
+        }
+        
+        // 初始化地图
+        function initMap() {
+            const mapImage = document.getElementById('mapImage');
+            mapImage.onload = function() {
+                setupDormButtons();
+                setupMapControls();
+            };
+            
+            if (mapImage.complete) {
+                mapImage.onload();
+            }
+        }
+        
+        // 设置宿舍楼按钮
+        function setupDormButtons() {
+            const mapContainer = document.getElementById('mapContainer');
+            
+            dormitories.forEach(dorm => {
+                // 创建按钮
+                const btn = document.createElement('div');
+                btn.className = 'dorm-btn';
+                btn.style.left = `${dorm.x}%`;
+                btn.style.top = `${dorm.y}%`;
+                btn.innerHTML = `<i class="fa fa-building"></i>`;
+                btn.title = dorm.name;
+                
+                // 创建弹出窗口
+                const popup = document.createElement('div');
+                popup.className = 'popup-window';
+                popup.id = `popup-${dorm.id}`;
+                
+                // 设置弹出窗口位置
+                popup.style.left = `${dorm.x + 3}%`;
+                popup.style.top = `${dorm.y - 5}%`;
+                
+                // 添加弹出窗口内容
+                popup.innerHTML = `
+                    <h3 class="font-semibold text-dark mb-3">${dorm.name}</h3>
+                    <div class="options-container">
+                        ${options[dorm.id].map((opt, index) => `
+                            <button class="option-btn" data-dorm="${dorm.id}" data-option="${index}">
+                                <i class="fa ${opt.icon} text-primary"></i>
+                                ${opt.text}
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // 添加到地图容器
+                mapContainer.appendChild(btn);
+                mapContainer.appendChild(popup);
+                
+                // 按钮点击事件
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    togglePopup(popup.id);
+                });
+            });
+            
+            // 为选项按钮添加点击事件
+            document.querySelectorAll('.option-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const dormId = btn.getAttribute('data-dorm');
+                    const optionIndex = btn.getAttribute('data-option');
+                    const dorm = dormitories.find(d => d.id == dormId);
+                    const option = options[dormId][optionIndex];
+                    
+                    // 如果是报修选项，跳转到表单并选中对应的宿舍楼
+                    if (option.text === "宿舍报修" || option.text === "预约场地") {
+                        switchToTab('formTab');
+                        document.getElementById('buildingSelect').value = dormId;
+                    } else {
+                        alert(`${dorm.name}的基本信息：\n建成时间：2010年\n容纳人数：约500人\n管理员：张老师`);
+                    }
+                    
+                    hidePopup(currentPopup);
+                });
+            });
+            
+            // 点击地图其他区域关闭弹出窗口
+            mapContainer.addEventListener('click', () => {
+                if (currentPopup) {
+                    hidePopup(currentPopup);
+                }
+            });
+        }
+        
+        // 设置地图控制
+        function setupMapControls() {
+            let scale = 1;
+            const mapContainer = document.getElementById('mapContainer');
+            const zoomInBtn = document.getElementById('zoomIn');
+            const zoomOutBtn = document.getElementById('zoomOut');
+            const resetMapBtn = document.getElementById('resetMap');
+            
+            zoomInBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (scale < 2.0) {
+                    scale += 0.1;
+                    mapContainer.style.transform = `scale(${scale})`;
+                }
+            });
+            
+            zoomOutBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (scale > 0.5) {
+                    scale -= 0.1;
+                    mapContainer.style.transform = `scale(${scale})`;
+                }
+            });
+            
+            resetMapBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                scale = 1;
+                mapContainer.style.transform = `scale(${scale})`;
+            });
+        }
+        
+        // 初始化表单
+        function initForm() {
+            // 填充宿舍楼下拉选项
+            const buildingSelect = document.getElementById('buildingSelect');
+            dormitories.forEach(dorm => {
+                const option = document.createElement('option');
+                option.value = dorm.id;
+                option.textContent = dorm.name;
+                buildingSelect.appendChild(option);
+            });
+            
+            // 表单提交事件
+            const dataForm = document.getElementById('dataForm');
+            dataForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                // 获取表单数据
+                const formData = new FormData(dataForm);
+                const feedbackData = {
+                    id: Date.now(), // 使用时间戳作为唯一ID
+                    buildingId: formData.get('building'),
+                    buildingName: dormitories.find(d => d.id == formData.get('building'))?.name || '',
+                    roomNumber: formData.get('roomNumber'),
+                    feedbackType: formData.get('feedbackType'),
+                    description: formData.get('description'),
+                    contactInfo: formData.get('contactInfo'),
+                    timestamp: new Date().toISOString()
+                };
+                
+                // 保存数据
+                saveData(feedbackData);
+                
+                // 显示成功提示
+                document.getElementById('successModal').classList.remove('hidden');
+                
+                // 重置表单
+                dataForm.reset();
+            });
+            
+            // 关闭弹窗按钮
+            document.getElementById('closeModal').addEventListener('click', () => {
+                document.getElementById('successModal').classList.add('hidden');
+            });
+        }
+        
+        // 初始化标签页
+        function initTabs() {
+            const mapTab = document.getElementById('mapTab');
+            const formTab = document.getElementById('formTab');
+            const statsTab = document.getElementById('statsTab');
+            
+            mapTab.addEventListener('click', () => switchToTab('mapTab'));
+            formTab.addEventListener('click', () => switchToTab('formTab'));
+            statsTab.addEventListener('click', () => switchToTab('statsTab'));
+        }
+        
+        // 切换标签页
+        function switchToTab(tabId) {
+            // 隐藏所有内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            // 重置所有标签样式
+            document.querySelectorAll('#tabNavigation button').forEach(tab => {
+                tab.classList.remove('border-primary', 'text-primary');
+                tab.classList.add('border-transparent', 'hover:text-gray-600', 'hover:border-gray-300');
+            });
+            
+            // 显示选中的标签和内容
+            const activeTab = document.getElementById(tabId);
+            activeTab.classList.remove('border-transparent', 'hover:text-gray-600', 'hover:border-gray-300');
+            activeTab.classList.add('border-primary', 'text-primary');
+            
+            if (tabId === 'mapTab') {
+                document.getElementById('mapView').classList.remove('hidden');
+            } else if (tabId === 'formTab') {
+                document.getElementById('formView').classList.remove('hidden');
+            } else if (tabId === 'statsTab') {
+                document.getElementById('statsView').classList.remove('hidden');
+                updateCharts(); // 更新图表数据
+            }
+        }
+        
+        // 保存数据到本地存储
+        function saveData(data) {
+            // 从本地存储获取现有数据
+            let existingData = JSON.parse(localStorage.getItem('feedbackData') || '[]');
+            
+            // 添加新数据
+            existingData.push(data);
+            
+            // 保存回本地存储
+            localStorage.setItem('feedbackData', JSON.stringify(existingData));
+            
+            // 更新显示
+            loadData();
+        }
+        
+        // 从本地存储加载数据
+        function loadData() {
+            // 从本地存储获取数据
+            const data = JSON.parse(localStorage.getItem('feedbackData') || '[]');
+            
+            // 更新记录计数
+            document.getElementById('totalRecords').textContent = data.length;
+            
+            // 更新记录表格
+            const tableBody = document.getElementById('recordsTable');
+            if (data.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">暂无数据</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // 格式化日期时间
+            const formatDate = (dateString) => {
+                const date = new Date(dateString);
+                return date.toLocaleString('zh-CN');
+            };
+            
+            // 格式化反馈类型
+            const formatFeedbackType = (type) => {
+                const types = {
+                    'maintenance': '设施维修',
+                    'suggestion': '建议反馈',
+                    'complaint': '投诉举报',
+                    'inquiry': '咨询问题'
+                };
+                return types[type] || type;
+            };
+            
+            // 生成表格内容
+            tableBody.innerHTML = data.map(item => `
+                <tr>
+                    <td class="px-4 py-3 whitespace-nowrap">${item.buildingName}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">${item.roomNumber}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">${formatFeedbackType(item.feedbackType)}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">${formatDate(item.timestamp)}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <button class="text-primary hover:text-primary/80 mr-3" onclick="viewRecord(${item.id})">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                        <button class="text-red-500 hover:text-red-700" onclick="deleteRecord(${item.id})">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        // 查看记录详情
+        function viewRecord(id) {
+            const data = JSON.parse(localStorage.getItem('feedbackData') || '[]');
+            const record = data.find(item => item.id === id);
+            
+            if (record) {
+                alert(`
+                宿舍楼: ${record.buildingName}
+                房间号: ${record.roomNumber}
+                反馈类型: ${formatFeedbackType(record.feedbackType)}
+                提交时间: ${formatDate(record.timestamp)}
+                联系方式: ${record.contactInfo || '未提供'}
+                详细描述: ${record.description}
+                `);
+            }
+        }
+        
+        // 删除记录
+        function deleteRecord(id) {
+            if (confirm('确定要删除这条记录吗？')) {
+                let data = JSON.parse(localStorage.getItem('feedbackData') || '[]');
+                data = data.filter(item => item.id !== id);
+                localStorage.setItem('feedbackData', JSON.stringify(data));
+                loadData();
+                updateCharts();
+            }
+        }
+        
+        // 初始化图表
+        function initCharts() {
+            // 反馈类型图表
+            const typeCtx = document.getElementById('feedbackTypeChart').getContext('2d');
+            feedbackTypeChart = new Chart(typeCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['设施维修', '建议反馈', '投诉举报', '咨询问题'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: [
+                            '#3B82F6', '#10B981', '#EF4444', '#F59E0B'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+            
+            // 宿舍楼图表
+            const buildingCtx = document.getElementById('buildingChart').getContext('2d');
+            buildingChart = new Chart(buildingCtx, {
+                type: 'bar',
+                data: {
+                    labels: dormitories.map(d => d.name),
+                    datasets: [{
+                        label: '反馈数量',
+                        data: dormitories.map(() => 0),
+                        backgroundColor: '#3B82F6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 更新图表数据
+        function updateCharts() {
+            const data = JSON.parse(localStorage.getItem('feedbackData') || '[]');
+            
+            // 更新反馈类型图表
+            const typeCounts = {
+                'maintenance': 0,
+                'suggestion': 0,
+                'complaint': 0,
+                'inquiry': 0
+            };
+            
+            data.forEach(item => {
+                if (typeCounts.hasOwnProperty(item.feedbackType)) {
+                    typeCounts[item.feedbackType]++;
+                }
+            });
+            
+            feedbackTypeChart.data.datasets[0].data = [
+                typeCounts.maintenance,
+                typeCounts.suggestion,
+                typeCounts.complaint,
+                typeCounts.inquiry
+            ];
+            feedbackTypeChart.update();
+            
+            // 更新宿舍楼图表
+            const buildingCounts = {};
+            dormitories.forEach(dorm => {
+                buildingCounts[dorm.id] = 0;
+            });
+            
+            data.forEach(item => {
+                if (buildingCounts.hasOwnProperty(item.buildingId)) {
+                    buildingCounts[item.buildingId]++;
+                }
+            });
+            
+            buildingChart.data.datasets[0].data = dormitories.map(dorm => buildingCounts[dorm.id]);
+            buildingChart.update();
+        }
+        
+        // 切换弹出窗口显示/隐藏
+        function togglePopup(popupId) {
+            const popup = document.getElementById(popupId);
+            
+            if (currentPopup === popupId && popup.classList.contains('popup-visible')) {
+                hidePopup(popupId);
+                return;
+            }
+            
+            if (currentPopup) {
+                hidePopup(currentPopup);
+            }
+            
+            popup.classList.add('popup-visible');
+            currentPopup = popupId;
+        }
+        
+        // 隐藏弹出窗口
+        function hidePopup(popupId) {
+            const popup = document.getElementById(popupId);
+            if (popup) {
+                popup.classList.remove('popup-visible');
+                currentPopup = null;
+            }
+        }
+        
+        // 辅助函数 - 格式化日期
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN');
+        }
+        
+        // 辅助函数 - 格式化反馈类型
+        function formatFeedbackType(type) {
+            const types = {
+                'maintenance': '设施维修',
+                'suggestion': '建议反馈',
+                'complaint': '投诉举报',
+                'inquiry': '咨询问题'
+            };
+            return types[type] || type;
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
